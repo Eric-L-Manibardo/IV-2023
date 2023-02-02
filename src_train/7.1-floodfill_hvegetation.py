@@ -1,0 +1,154 @@
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jul 19 14:23:46 2022
+
+@author: eric
+"""
+import numpy as np
+from tqdm import tqdm
+import imageio
+from PIL import Image
+from scipy.ndimage.measurements import label
+from collections import Counter
+
+
+def remove_values_from_list(the_list, val):
+   return [value for value in the_list if value != val]
+
+
+
+color_map = np.load('color_map_reduced_1.npy')
+
+color_target = np.array([233,128,233]) #pink wheel/bike
+id_target = np.where(np.equal(color_map, color_target).all(axis=1))[0][0]
+
+color_hvegetation = np.array([255,128,0]) # orange hvegetation
+id_hvegetation = np.where(np.equal(color_map, color_hvegetation).all(axis=1))[0][0]
+
+color_vvegetation = np.array([102,102,156])
+id_vvegetation = np.where(np.equal(color_map, color_vvegetation).all(axis=1))[0][0]
+
+color_sidewalk = np.array([0,0,90])
+id_sidewalk = np.where(np.equal(color_map, color_sidewalk).all(axis=1))[0][0]
+
+color_railway = np.array([150,120,90]) #it also contains some sidewalk borders
+id_railway = np.where(np.equal(color_map, color_railway).all(axis=1))[0][0]
+
+
+resolution = 320
+n_images=2975
+for selec in tqdm(range(n_images)):    
+    # selec = 142
+
+    # =============================================================================
+    # translate RGB to int matrix
+    # =============================================================================
+    cimg = imageio.imread('reduced_cluster_v2/reduced_'+str(selec)+'.png')
+    final_img = cimg.copy()
+    skeleton = np.zeros(320*320).reshape(320,320)
+    
+    for c in range(len(color_map)):
+        mask_color= np.stack((np.ones((320,320))*color_map[c][0],
+                  np.ones((320,320))*color_map[c][1],
+                  np.ones((320,320))*color_map[c][2]),axis=-1)
+        mask0 = cimg[:,:,0] == mask_color[:,:,0] 
+        mask1 = cimg[:,:,1] == mask_color[:,:,1] 
+        mask2 = cimg[:,:,2] == mask_color[:,:,2]
+        mask = mask0*mask1*mask2
+        skeleton[mask]=c
+    
+    # =============================================================================
+    # generamos la mascara target
+    # =============================================================================
+    mask_color= np.stack((np.ones((320,320))*color_target[0],
+              np.ones((320,320))*color_target[1],
+              np.ones((320,320))*color_target[2]),axis=-1)
+    mask0 = cimg[:,:,0] == mask_color[:,:,0] 
+    mask1 = cimg[:,:,1] == mask_color[:,:,1] 
+    mask2 = cimg[:,:,2] == mask_color[:,:,2]
+    mask = mask0*mask1*mask2
+    
+    # separamos en islas los pixeles del mismo color
+    labeled_mask, n_islands = label(mask)
+    key_colors = list()
+    for k in range(n_islands):
+    
+        #filtramos la isla en cuestión
+        lmask = labeled_mask == k + 1 #label 0 es todo lo que no son islas
+        x,y = np.where(lmask) #coordenadas de los pixeles de la isla en cuestión
+        
+        '''
+        vamos a cambiar el algoritmo. Para cada pixel de cada isla,
+        se anota los pixeles vecinos de cada pixel.
+        if not (RGB_Vecino == target) and not already_saved:
+            save position (i.e. (x,y))
+
+        Cuando tengamos todas las posiciones, devolvemos el valor de la maskara en si
+        
+        añadimos un -1 si el pixel está fuera de imagen en un array especial, 
+        para tenerlo en cuenta en los casos pertinentes 
+        '''
+        neigh_pos_x = [1,1,1, 0,0, -1,-1,-1]
+        neigh_pos_y = [-1,0,1,-1,1, -1,0,1 ]
+        neighbor_pixels, out_pixels = list(),list()
+        #para cada pixel
+        for i in range(len(x)):
+            for p in range(len(neigh_pos_x)):                
+                neigh = (x[i]+neigh_pos_x[p], y[i]+neigh_pos_y[p])
+                # si el vecino está en la imagen
+                if neigh[0]>0 and neigh[1]>0 and neigh[0]<resolution and neigh[1]<resolution:
+                    pxl = skeleton[neigh[0], neigh[1]]
+                    if  pxl != id_target and neigh not in neighbor_pixels:
+                        neighbor_pixels.append(neigh)
+                #fuera de imagen
+                else:
+                    if neigh not in out_pixels:
+                        out_pixels.append(neigh)
+        
+        
+# =============================================================================
+# contamos los pixeles de cada label
+# =============================================================================
+        neigh_labels = list()
+        for i in range(len(neighbor_pixels)):
+            neigh_labels.append(skeleton[neighbor_pixels[i][0], neighbor_pixels[i][1]])
+        for i in range(len(out_pixels)):
+            neigh_labels.append(-1)
+        d_count=Counter(neigh_labels)  
+        
+
+        #si rosa toca naranja hazlo naranja tambien
+        # if d_count[id_hvegetation] >= 1:
+        if d_count[id_hvegetation] + d_count[id_vvegetation] + d_count[id_sidewalk] + d_count[id_railway] >= 0.30 * len(neigh_labels):
+            key_colors.append(color_hvegetation)
+        else:
+            key_colors.append(color_target)
+    
+# =============================================================================
+# save result
+# =============================================================================
+
+    
+    for k in range(len(key_colors)):
+        lmask = labeled_mask == k+1
+        final_img[lmask] = key_colors[k] 
+    im = Image.fromarray(final_img)
+    im.save('reduced_cluster_v3/reduced_'+str(selec)+'.png')
+
+
+print('Finished')
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

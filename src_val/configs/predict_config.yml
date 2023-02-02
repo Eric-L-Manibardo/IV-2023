@@ -1,0 +1,21 @@
+output_root: '../'
+pytorch_data_dir: '../datadrive/pytorch-data/test'
+experiment_name: 'periko_prediction'
+res: 320
+batch_size: 8
+num_workers: 24
+run_picie: False #True
+run_crf: True
+run_prediction: True
+dark_mode: True #plotting option
+use_ddp: False
+
+model_paths: "../saved_models/cityscapes_vit_base_1.ckpt"
+
+
+hydra:
+  run:
+    dir: "."
+  output_subdir: ~
+  #job_logging: "disabled"
+  #hydra_logging: "disabled"
